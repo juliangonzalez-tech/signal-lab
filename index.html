@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SIGNAL LAB / Julian Gonzalez</title>
+<meta name="description" content="A tiny interactive network experiment: find the corrupted nodes and restore the signal. A playful companion to Julian Gonzalez's AI-security work.">
+<meta name="theme-color" content="#08111f">
+<meta name="color-scheme" content="dark">
+<meta property="og:type" content="website">
+<meta property="og:title" content="SIGNAL LAB / Julian Gonzalez">
+<meta property="og:description" content="Find the corrupted nodes and restore the signal. A small interactive experiment.">
+<meta property="og:url" content="https://juliangonzalez-tech.github.io/signal-lab/">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%2308111f'/%3E%3Ccircle cx='16' cy='16' r='7' fill='%2367e9d2'/%3E%3C/svg%3E">
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: #08111f;
+    color: #e7f9fd;
+    font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+    overflow-x: hidden;
+  }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; }
+  main {
+    position: relative;
+    z-index: 1;
+    min-height: 100vh;
+    min-height: 100dvh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 25px;
+  }
+  .shell {
+    width: min(790px, 100%);
+    background: #0a1725ed;
+    border: 1px solid #305264;
+    border-radius: 20px;
+    padding: clamp(20px, 5vw, 45px);
+    box-shadow: 0 20px 100px #0008;
+  }
+  small, .meta { color: #60e2d1; letter-spacing: .14em; }
+  h1 { font-size: clamp(2.5rem, 8vw, 5.4rem); margin: 20px 0 8px; letter-spacing: -.07em; line-height: 1.05; }
+  h1 span { color: #62e5d4; }
+  p { color: #b0c8d1; line-height: 1.7; }
+
+  button, a.button {
+    display: inline-block;
+    color: #08111f;
+    background: #67e9d2;
+    padding: 13px 20px;
+    border: 0;
+    border-radius: 8px;
+    font: inherit;
+    font-weight: bold;
+    cursor: pointer;
+    text-decoration: none;
+  }
+  .outline { background: transparent; color: #b4f8f0; border: 1px solid #447b81; }
+  button:focus-visible, a.button:focus-visible { outline: 3px solid #ffe08a; outline-offset: 3px; }
+
+  .meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; }
+  #count { color: #5ae9ce; font-weight: bold; }
+  .bar { flex: 1 1 140px; max-width: 260px; height: 6px; border-radius: 3px; background: #14303d; overflow: hidden; }
+  #fill { display: block; height: 100%; width: 0; background: #50e7bb; transition: width .35s ease; }
+
+  #field {
+    position: relative;
+    border: 1px solid #275261;
+    background: #091b2a;
+    border-radius: 13px;
+    min-height: 270px;
+    margin: 22px 0;
+    overflow: hidden;
+  }
+  #links { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+  #links line { stroke: #7b3a56; stroke-width: 1.5; stroke-dasharray: 4 5; vector-effect: non-scaling-stroke; transition: stroke .4s; }
+  #links line.live { stroke: #4affc7; stroke-dasharray: none; filter: drop-shadow(0 0 3px #4affc788); }
+
+  /* .node must reset the generic button padding or it renders as an oval */
+  .node {
+    position: absolute;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    transform: translate(-50%, -50%);
+    border-radius: 50%;
+    background: #e46b98;
+    border: 2px solid #ffb4d1;
+    box-shadow: 0 0 22px #ec4b91aa;
+    animation: pulse 1.8s ease-in-out infinite;
+    transition: transform .2s, background .3s, border-color .3s;
+  }
+  .node:hover { transform: translate(-50%, -50%) scale(1.15); }
+  .node:focus-visible { outline: 3px solid #ffe08a; outline-offset: 4px; }
+  .node.fixed {
+    background: #50e7bb;
+    border-color: #ccffee;
+    box-shadow: 0 0 25px #4affc7aa;
+    cursor: default;
+    animation: none;
+  }
+  .node.fixed:hover { transform: translate(-50%, -50%); }
+  @keyframes pulse {
+    0%, 100% { box-shadow: 0 0 14px #ec4b9188; }
+    50% { box-shadow: 0 0 30px #ec4b91dd; }
+  }
+
+  .actions { display: flex; flex-wrap: wrap; gap: 12px; }
+  #win { color: #7af2d6; min-height: 1.7em; margin-bottom: 0; }
+
+  @media (max-width: 480px) { #field { min-height: 300px; } }
+  @media (prefers-reduced-motion: reduce) {
+    .node { animation: none; }
+    #fill, #links line, .node { transition: none; }
+  }
+</style>
+</head>
+<body>
+<canvas id="bg" aria-hidden="true"></canvas>
+<main>
+  <section class="shell">
+    <small>JULIAN / EXPERIMENT 001</small>
+    <h1>SIGNAL<span> LAB</span></h1>
+    <p>A tiny interactive network experiment. Find the corrupted nodes and restore the signal. Real AI reliability is more complicated; this is just a playful visual metaphor.</p>
+    <div class="meta">
+      <span>SYSTEM STATUS</span>
+      <span id="count">0 / 7 repaired</span>
+      <span class="bar" aria-hidden="true"><i id="fill"></i></span>
+    </div>
+    <div id="field" role="group" aria-label="Network of corrupted nodes. Activate each one to repair it.">
+      <svg id="links" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"></svg>
+    </div>
+    <div class="actions">
+      <button id="reset" type="button">RESET NETWORK</button>
+      <a class="button outline" href="https://github.com/juliangonzalez-tech" rel="noopener">GITHUB ↗</a>
+    </div>
+    <p id="win" role="status" aria-live="polite"></p>
+  </section>
+</main>
+
+<script>
+const TOTAL = 7;
+const positions = [[12, 20], [42, 15], [77, 23], [25, 61], [53, 51], [81, 70], [45, 82]];
+const edges = [[0, 1], [1, 2], [0, 3], [1, 4], [2, 5], [3, 4], [4, 5], [3, 6], [4, 6], [5, 6]];
+
+const field = document.getElementById('field');
+const links = document.getElementById('links');
+const count = document.getElementById('count');
+const fill = document.getElementById('fill');
+const win = document.getElementById('win');
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
+let repaired = 0;
+let startedAt = 0;
+let nodes = [];
+let lines = [];
+
+function refreshLinks() {
+  edges.forEach(([a, b], i) => {
+    lines[i].classList.toggle('live', nodes[a].classList.contains('fixed') && nodes[b].classList.contains('fixed'));
+  });
+}
+
+function repair(node, index) {
+  if (node.classList.contains('fixed')) return;
+  if (!startedAt) startedAt = performance.now();
+  node.classList.add('fixed');
+  node.setAttribute('aria-label', `Node ${index + 1} repaired`);
+  repaired++;
+  count.textContent = `${repaired} / ${TOTAL} repaired`;
+  fill.style.width = `${(repaired / TOTAL) * 100}%`;
+  refreshLinks();
+  if (repaired === TOTAL) {
+    const seconds = ((performance.now() - startedAt) / 1000).toFixed(1);
+    win.textContent = `NETWORK RESTORED in ${seconds}s. All signals nominal.`;
+  }
+}
+
+function setup() {
+  repaired = 0;
+  startedAt = 0;
+  count.textContent = `0 / ${TOTAL} repaired`;
+  fill.style.width = '0';
+  win.textContent = '';
+  field.querySelectorAll('.node').forEach(n => n.remove());
+  links.replaceChildren();
+
+  nodes = positions.map(([x, y], i) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'node';
+    b.style.left = `${x}%`;
+    b.style.top = `${y}%`;
+    b.setAttribute('aria-label', `Repair corrupted node ${i + 1}`);
+    b.addEventListener('click', () => repair(b, i));
+    field.appendChild(b);
+    return b;
+  });
+
+  lines = edges.map(([a, b]) => {
+    const l = document.createElementNS(SVG_NS, 'line');
+    l.setAttribute('x1', positions[a][0]);
+    l.setAttribute('y1', positions[a][1]);
+    l.setAttribute('x2', positions[b][0]);
+    l.setAttribute('y2', positions[b][1]);
+    links.appendChild(l);
+    return l;
+  });
+}
+
+document.getElementById('reset').addEventListener('click', setup);
+setup();
+
+/* Ambient background: drifting dots that connect and shy away from the pointer. */
+const canvas = document.getElementById('bg');
+const ctx = canvas.getContext('2d');
+const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+let dots = [];
+let w = 0, h = 0;
+let mx = -999, my = -999;
+
+function resize() {
+  const dpr = Math.min(devicePixelRatio || 1, 2);
+  const nw = innerWidth, nh = innerHeight;
+  canvas.width = nw * dpr;
+  canvas.height = nh * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  // Mobile browsers fire resize when the URL bar collapses; keep the dots if only the height moved.
+  if (nw !== w || !dots.length) {
+    dots = Array.from({ length: nw < 600 ? 40 : 65 }, () => ({
+      x: Math.random() * nw, y: Math.random() * nh,
+      vx: (Math.random() - .5) * .6, vy: (Math.random() - .5) * .6
+    }));
+  }
+  w = nw; h = nh;
+  if (reduced) draw();
+}
+addEventListener('resize', resize);
+addEventListener('pointermove', e => { mx = e.clientX; my = e.clientY; });
+
+function draw() {
+  ctx.clearRect(0, 0, w, h);
+  dots.forEach((d, i) => {
+    if (!reduced) {
+      d.x = (d.x + d.vx + w) % w;
+      d.y = (d.y + d.vy + h) % h;
+      const dist = Math.hypot(d.x - mx, d.y - my);
+      if (dist < 120) { d.x += (d.x - mx) / (dist + 1); d.y += (d.y - my) / (dist + 1); }
+    }
+    ctx.fillStyle = '#4ab5b3';
+    ctx.fillRect(d.x, d.y, 2, 2);
+    for (let j = i + 1; j < dots.length; j++) {
+      const o = dots[j], q = Math.hypot(d.x - o.x, d.y - o.y);
+      if (q < 125) {
+        ctx.strokeStyle = `rgba(61,167,164,${.18 * (1 - q / 125)})`;
+        ctx.beginPath();
+        ctx.moveTo(d.x, d.y);
+        ctx.lineTo(o.x, o.y);
+        ctx.stroke();
+      }
+    }
+  });
+  if (!reduced) requestAnimationFrame(draw);
+}
+
+resize();
+if (!reduced) draw();
+</script>
+</body>
+</html>
